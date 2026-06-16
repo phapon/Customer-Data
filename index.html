@@ -1,1 +1,221 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบฐานข้อมูลพนักงาน</title>
+    <!-- โหลด Tailwind CSS ผ่าน CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- โหลดฟอนต์ Prompt เพื่อให้รองรับภาษาไทยสวยงาม -->
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Prompt', sans-serif; background-color: #f3f4f6; }
+        /* กำหนด Custom Scrollbar สำหรับตาราง */
+        .table-container::-webkit-scrollbar { height: 8px; }
+        .table-container::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+        .table-container::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
+        .table-container::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+    </style>
+</head>
+<body class="text-gray-800 antialiased p-4 md:p-8">
 
+    <div class="max-w-7xl mx-auto">
+        <!-- ส่วนหัว -->
+        <div class="bg-white rounded-t-xl shadow-sm p-6 border-b border-gray-100 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div>
+                <h1 class="text-2xl font-semibold text-blue-700">👥 ระบบฐานข้อมูลพนักงาน</h1>
+                <p class="text-sm text-gray-500 mt-1">แสดงข้อมูลพนักงานทั้งหมดในองค์กร</p>
+            </div>
+            
+            <!-- เครื่องมือค้นหาและกรองข้อมูล -->
+            <div class="flex flex-col sm:flex-row w-full md:w-auto gap-3">
+                <div class="relative">
+                    <select id="prefixFilter" class="w-full sm:w-40 appearance-none bg-gray-50 border border-gray-300 text-gray-700 py-2 px-4 pr-8 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+                        <option value="all">คำนำหน้าทั้งหมด</option>
+                        <!-- Options จะถูกสร้างอัตโนมัติด้วย JS -->
+                    </select>
+                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
+                        <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                    </div>
+                </div>
+                
+                <input type="text" id="searchInput" placeholder="🔍 ค้นหา ชื่อ, รหัส, เบอร์..." class="w-full sm:w-64 bg-gray-50 border border-gray-300 text-gray-700 py-2 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+            </div>
+        </div>
+
+        <!-- พื้นที่แสดงข้อมูล -->
+        <div class="bg-white rounded-b-xl shadow-sm p-0 overflow-hidden relative">
+            
+            <!-- Loading Indicator -->
+            <div id="loading" class="absolute inset-0 bg-white bg-opacity-90 z-10 flex flex-col items-center justify-center py-20">
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+                <p class="text-gray-600">กำลังโหลดข้อมูล...</p>
+            </div>
+
+            <!-- ตารางข้อมูล -->
+            <div class="table-container overflow-x-auto">
+                <table class="min-w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-blue-50 text-blue-800 text-sm uppercase tracking-wider border-b border-blue-200">
+                            <th class="py-4 px-6 font-medium">รหัสพนักงาน</th>
+                            <th class="py-4 px-6 font-medium">ชื่อ-นามสกุล</th>
+                            <th class="py-4 px-6 font-medium">ชื่อเล่น</th>
+                            <th class="py-4 px-6 font-medium">วันที่เริ่มงาน</th>
+                            <th class="py-4 px-6 font-medium">เลขที่บัตรประชาชน</th>
+                            <th class="py-4 px-6 font-medium min-w-[200px]">ที่อยู่</th>
+                            <th class="py-4 px-6 font-medium text-right">ฐานเงินเดือน</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody" class="text-sm divide-y divide-gray-100">
+                        <!-- ข้อมูลจะถูกนำมาแสดงที่นี่ -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- ข้อความเมื่อไม่พบข้อมูล -->
+            <div id="noData" class="hidden py-12 text-center text-gray-500">
+                <p class="text-lg">😕 ไม่พบข้อมูลที่ค้นหา</p>
+            </div>
+        </div>
+        
+        <div class="mt-4 text-center text-sm text-gray-400">
+            จำนวนพนักงานทั้งหมด: <span id="recordCount" class="font-semibold text-gray-600">0</span> รายการ
+        </div>
+    </div>
+
+    <!-- ส่วนของ JavaScript ภายใน Web App -->
+    <script>
+        // TODO: ใส่ URL ของ Web App ที่ได้จาก Google Apps Script หลัง Deploy
+        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxGNGgGlYblUyQ0TUWPBojb1mN1UjKpVC-j971jXRUPUZaOgsZOnzJoiJPlArqoNblzVQ/exec';
+
+        let allEmployees = []; // เก็บข้อมูลทั้งหมดจากหลังบ้าน
+
+        // ทำงานทันทีเมื่อหน้าเว็บโหลดเสร็จ
+        document.addEventListener('DOMContentLoaded', () => {
+            if(SCRIPT_URL === 'ใส่_URL_WEB_APP_ของคุณที่นี่') {
+                alert('กรุณาตั้งค่า SCRIPT_URL ในโค้ดก่อนนำไปรันบน Github');
+                document.getElementById('loading').innerHTML = '<p class="text-red-500 font-bold mt-4">เกิดข้อผิดพลาด: กรุณาใส่ SCRIPT_URL</p>';
+                return;
+            }
+            fetchData();
+            
+            // ตั้งค่า Event Listeners สำหรับการค้นหาและกรอง
+            document.getElementById('searchInput').addEventListener('input', filterData);
+            document.getElementById('prefixFilter').addEventListener('change', filterData);
+        });
+
+        // ฟังก์ชันเรียกข้อมูลจาก API (แทน google.script.run)
+        async function fetchData() {
+            document.getElementById('loading').classList.remove('hidden');
+            
+            try {
+                // ใช้ fetch API เรียกข้อมูลแบบข้ามโดเมน
+                const response = await fetch(SCRIPT_URL);
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    onSuccess(result.data);
+                } else {
+                    onFailure(new Error(result.message));
+                }
+            } catch (error) {
+                onFailure(error);
+            }
+        }
+
+        // เมื่อดึงข้อมูลสำเร็จ
+        function onSuccess(data) {
+            allEmployees = data;
+            populatePrefixDropdown();
+            renderTable(allEmployees);
+            document.getElementById('loading').classList.add('hidden');
+        }
+
+        // เมื่อดึงข้อมูลล้มเหลว
+        function onFailure(error) {
+            alert('เกิดข้อผิดพลาด: ' + error.message);
+            document.getElementById('loading').classList.add('hidden');
+        }
+
+        // สร้างรายการ Dropdown คำนำหน้าอัตโนมัติจากข้อมูล
+        function populatePrefixDropdown() {
+            const prefixSet = new Set();
+            allEmployees.forEach(emp => {
+                if (emp['คำนำหน้า'] && emp['คำนำหน้า'] !== "-") {
+                    prefixSet.add(emp['คำนำหน้า']);
+                }
+            });
+
+            const select = document.getElementById('prefixFilter');
+            prefixSet.forEach(prefix => {
+                const option = document.createElement('option');
+                option.value = prefix;
+                option.textContent = prefix;
+                select.appendChild(option);
+            });
+        }
+
+        // ฟังก์ชันวาดตาราง
+        function renderTable(data) {
+            const tbody = document.getElementById('tableBody');
+            const noData = document.getElementById('noData');
+            const recordCount = document.getElementById('recordCount');
+            
+            tbody.innerHTML = ''; // ล้างข้อมูลเก่า
+            recordCount.textContent = data.length;
+
+            if (data.length === 0) {
+                noData.classList.remove('hidden');
+                return;
+            } else {
+                noData.classList.add('hidden');
+            }
+
+            data.forEach((emp, index) => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-gray-50 transition duration-150 ease-in-out";
+                
+                // จัดรูปแบบเงินเดือนให้มีคอมม่า (,)
+                let salary = emp['ฐานเงินเดือนปัจจุบัน'];
+                let formattedSalary = "-";
+                if (!isNaN(salary) && salary !== "-") {
+                    formattedSalary = Number(salary).toLocaleString('th-TH') + ' ฿';
+                }
+
+                // สร้างชื่อเต็ม
+                const fullName = `${emp['คำนำหน้า']} ${emp['ชื่อจริง']} ${emp['นามสกุล']}`;
+
+                tr.innerHTML = `
+                    <td class="py-3 px-6 whitespace-nowrap"><span class="bg-blue-100 text-blue-700 py-1 px-2 rounded-md font-medium text-xs">${emp['employeeID']}</span></td>
+                    <td class="py-3 px-6 font-medium text-gray-900">${fullName}</td>
+                    <td class="py-3 px-6">${emp['ชื่อเล่น']}</td>
+                    <td class="py-3 px-6 text-gray-600">${emp['วันที่เริ่มงาน']}</td>
+                    <td class="py-3 px-6 text-gray-500 font-mono text-xs">${emp['เลขที่บัตรประชาชน']}</td>
+                    <td class="py-3 px-6 text-gray-600 truncate max-w-xs" title="${emp['ที่อยู่']}">${emp['ที่อยู่']}</td>
+                    <td class="py-3 px-6 text-right font-medium text-green-600">${formattedSalary}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // ฟังก์ชันกรองข้อมูล
+        function filterData() {
+            const searchText = document.getElementById('searchInput').value.toLowerCase();
+            const prefixValue = document.getElementById('prefixFilter').value;
+
+            const filteredData = allEmployees.filter(emp => {
+                // ตรวจสอบคำนำหน้า
+                const matchPrefix = (prefixValue === 'all') || (emp['คำนำหน้า'] === prefixValue);
+                
+                // ตรวจสอบคำค้นหา (ค้นหาจาก รหัส, ชื่อจริง, นามสกุล, ชื่อเล่น)
+                const searchString = `${emp['employeeID']} ${emp['ชื่อจริง']} ${emp['นามสกุล']} ${emp['ชื่อเล่น']}`.toLowerCase();
+                const matchSearch = searchString.includes(searchText);
+
+                return matchPrefix && matchSearch;
+            });
+
+            renderTable(filteredData);
+        }
+    </script>
+</body>
+</html>
